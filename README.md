@@ -1,17 +1,19 @@
 # DataLens — Agentic Data Analyst
 
-DataLens is a local, tool-using agent that answers natural-language questions about tabular datasets. The model chooses analysis tools, Python/pandas executes calculations on the uploaded data, and the model explains the resulting evidence. The app supports CSV and Excel uploads and includes an example sales dataset.
+DataLens is an agentic data-analysis application that answers natural-language questions about tabular datasets. Google Gemini decides which analysis tool(s) to use, while Python/Pandas performs the actual calculations on the uploaded data. The app supports CSV and Excel uploads and includes an example sales dataset.
 
 ## Why this is an agent, not just a chatbot
 
-The model decides which tool or sequence of tools to call for each question. The orchestrator executes only an explicit allow-list of Python functions, feeds each result back to the model, and loops until the model produces a final answer or reaches a step limit. Every tool call and result is visible in the UI.
+The model decides which tool or sequence of tools to call for each question. The orchestrator executes only an explicit allow-list of Python analysis functions, feeds each tool result back to the model, and loops until the model produces a final answer or reaches a step limit. Every tool call and result is visible in the UI.
+
+The project does **not** train or fine-tune the Gemini model on the uploaded dataset, and it does not maintain persistent memory between sessions.
 
 ## Seven distinct tools
 
-1. `dataset_overview` — rows, columns, types, missing values, duplicate rows, and a short preview.
+1. `dataset_overview` — rows, columns, data types, missing values, duplicate rows, and a short preview.
 2. `column_profile` — numeric statistics or category/text profile for one column.
-3. `missing_data_report` — missingness ranked by column, complete rows, and duplicates.
-4. `value_counts` — category/value frequencies.
+3. `missing_data_report` — missingness ranked by column, complete rows, and duplicate count.
+4. `value_counts` — category/value frequencies for a selected column.
 5. `grouped_aggregation` — group-by sum, mean, median, min, max, count, or unique count.
 6. `filter_rows` — safe, allow-listed comparisons; returns the match count and a limited sample.
 7. `correlation_analysis` — ranked Pearson correlations between numeric columns.
@@ -27,32 +29,36 @@ Streamlit UI → pandas DataFrame
         ↓
 Natural-language question + dataset schema/dimensions
         ↓
-Local Gemini API model chooses tool(s)
+Google Gemini API selects tool(s)
         ↓
-Allow-listed Python/pandas tools execute on the full DataFrame
+Allow-listed Python/Pandas tools execute on the DataFrame
         ↓
-Tool results are returned to the model (agent loop)
+Tool results are returned to Gemini (agent loop)
         ↓
 Evidence-based answer + inspectable tool trace
 ```
 
+## Stack
+
+- **Python** — application and agent orchestration
+- **Google Gemini API** — natural-language reasoning and tool selection
+- **Google GenAI SDK** — Gemini API integration and function/tool calling
+- **Pandas** — deterministic tabular analysis
+- **NumPy** — numerical operations
+- **Streamlit** — web UI
+- **OpenPyXL / xlrd** — Excel file support
+
 ## Setup on Windows 11
 
-### 1. Install Python and Gemini API
+### 1. Get a Gemini API key
 
-Install Python 3.11 or newer and install Gemini API from [ollama.com](https://ollama.com/). Gemini API runs the model locally, so no hosted model API key is required.
+Create a Gemini API key in Google AI Studio and set it as a Windows environment variable named `GEMINI_API_KEY`.
 
-### 2. Download the local model
+For security, **do not put the real API key in the repository**. The project includes `.env.example` only as a placeholder/reference, while `.env` is ignored by Git.
 
-Open PowerShell or Command Prompt and run:
+After setting the environment variable, open a new PowerShell window so the variable is available to the terminal.
 
-```powershell
-ollama pull gemini-3.8-flash
-```
-
-Keep Gemini API running. If your computer has limited RAM or GPU memory, use a smaller tool-capable model supported by your Gemini API installation and enter its exact tag in the app sidebar.
-
-### 3. Install project packages
+### 2. Install project packages
 
 From this project directory:
 
@@ -63,15 +69,21 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-If PowerShell blocks virtual-environment activation, open Command Prompt and use `.venv\Scripts\activate.bat`, or run `.venv\Scripts\python.exe -m pip install -r requirements.txt` directly.
-
-### 4. Launch the app
+If PowerShell blocks virtual-environment activation, use the environment's Python directly:
 
 ```powershell
-streamlit run app.py
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Streamlit opens a local browser page. The sample sales dataset is loaded by default. Upload another CSV or Excel file to demonstrate that the implementation is not hard-coded to one dataset.
+### 3. Launch the app
+
+```powershell
+py -m streamlit run app.py
+```
+
+Streamlit opens a local browser page. The sample sales dataset is available for demonstration. Upload another CSV or Excel file to demonstrate that the implementation is not hard-coded to one dataset.
+
+The default Gemini model is `gemini-3.8-flash`. The agent also has a `gemini-3.6-flash` fallback for transient model-availability problems.
 
 ## Demo questions
 
@@ -82,7 +94,7 @@ Streamlit opens a local browser page. The sample sales dataset is loaded by defa
 - How many orders have status Cancelled?
 - Which products have average profit below 50?
 
-For a clear demo, ask one question, open **Agent tool trace**, and explain why the selected tool and its actual output support the answer.
+For a clear demo, ask one question, open **Agent tool trace**, and explain why the selected tool(s) and their actual outputs support the answer.
 
 ## Tests
 
@@ -92,15 +104,16 @@ Run the non-LLM unit tests from the project directory:
 python -m unittest discover -s tests -v
 ```
 
-These tests validate the analysis tools independently of the local language model.
+These tests validate the analysis tools and agent orchestration independently of a live analysis session.
 
 ## Design choices and limitations
 
-- **Local inference:** avoids a hosted API key and keeps inference on the user's machine.
-- **Pandas for calculations:** statistics, groupings, and filtering run in code rather than being estimated by the model.
-- **Tool allow-list:** user questions cannot trigger arbitrary Python execution.
-- **Visible trace:** makes the agent's analysis auditable and useful in a live demo.
-- **Limitations:** natural-language tool selection can still fail, especially with ambiguous questions or unusual column names. CSV type inference can misclassify identifiers/dates. Check the tool trace, correct the question, or clarify the intended column/definition. Correlation is not causation. This is a local prototype, not a secured multi-user service.
+- **Gemini for reasoning/tool selection:** the hosted model handles natural-language understanding and decides which available analysis function(s) to call.
+- **Pandas for calculations:** statistics, groupings, filtering, missing-data analysis, and correlations are computed deterministically in Python rather than being estimated by the model.
+- **Tool allow-list:** model output cannot trigger arbitrary Python execution; only the explicitly defined tools can be called.
+- **Visible trace:** the UI exposes the selected tools and their results, making the agent's reasoning process more auditable during a demo.
+- **No persistent memory:** uploaded data and tool results are used for the current analysis session; the project does not implement cross-session memory.
+- **Limitations:** natural-language tool selection can still fail, especially with ambiguous questions or unusual column names. CSV type inference can misclassify identifiers/dates. Check the tool trace, rephrase the question, or clarify the intended column/definition. Correlation is not causation. This is a prototype, not a secured multi-user service.
 
 ## What to improve next
 
@@ -108,18 +121,16 @@ These tests validate the analysis tools independently of the local language mode
 2. Add more robust date parsing and time-series analysis.
 3. Add regression tests for mixed types, empty files, and adversarial cell contents.
 4. Add an answer-verification pass that cross-checks reported numbers against tool results.
-5. Evaluate tool selection and factual accuracy across unseen datasets, and save the results in an experiment log.
+5. Evaluate tool selection and factual accuracy across unseen datasets and save the results in an experiment log.
 
 ## Repository contents
 
-- `app.py` — Streamlit UI.
-- `agent.py` — model orchestration and iterative tool-calling loop.
-- `tools.py` — seven analysis functions and function schemas.
+- `app.py` — Streamlit UI and dataset upload interface.
+- `agent.py` — Gemini integration, tool definitions, and iterative tool-calling loop.
+- `tools.py` — seven deterministic Pandas analysis functions.
+- `requirements.txt` — Python dependencies.
+- `.env.example` — example environment-variable configuration; contains no secret key.
+- `.gitignore` — excludes secrets, virtual environments, caches, and other local files.
 - `sample_data/sales.csv` — demo dataset.
 - `tests/test_tools.py` — unit tests for analysis tools.
 - `tests/test_agent_loop.py` — tests for tool orchestration and rejected unknown tools.
-- `EXPLAIN_TO_ME.md` — beginner-friendly interview study notes.
-
-
-## Gemini setup
-Set the `GEMINI_API_KEY` environment variable before launching Streamlit. The app uses Gemini function calling to select allow-listed Python/pandas tools; it never executes model-generated Python or SQL.
